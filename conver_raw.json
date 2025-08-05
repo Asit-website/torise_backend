@@ -1,0 +1,25 @@
+﻿
+
+StatusCode        : 200
+StatusDescription : OK
+Content           : [{"summary":{"attempted_at":"2025-05-27T10:38:28.996Z","answered":true,"answered_a
+                    t":"2025-05-27T10:38:29.720Z","application_sid":"45f4fbf1-ad31-4f22-bc9c-68ef692f5
+                    73b","direction":"inbound","duration...
+RawContent        : HTTP/1.1 200 OK
+                    Access-Control-Allow-Origin: *
+                    Connection: keep-alive
+                    Keep-Alive: timeout=5
+                    Content-Length: 21029
+                    Content-Type: application/json; charset=utf-8
+                    Date: Fri, 18 Jul 2025 18:55:26 GM...
+Forms             : {}
+Headers           : {[Access-Control-Allow-Origin, *], [Connection, keep-alive], [Keep-Alive, 
+                    timeout=5], [Content-Length, 21029]...}
+Images            : {}
+InputFields       : {}
+Links             : {}
+ParsedHtml        : mshtml.HTMLDocumentClass
+RawContentLength  : 21029
+
+
+
