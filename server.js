@@ -23,7 +23,7 @@ app.locals = {
 // app.use(cors());
 
 const corsOptions = {
-  origin: 'https://ui.torisedigital.com', // ya koi aur specific domain
+  origin: '*', // ya koi aur specific domain
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true // agar cookies ya auth headers bhejne ho
