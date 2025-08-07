@@ -21,20 +21,16 @@ app.locals = {
 
 // Middleware
 // app.use(cors());
-const allowedOrigins = ['https://ui.torisedigital.com'];
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, origin); // ✅ return only the matched origin
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+const corsOptions = {
+  origin: 'https://ui.torisedigital.com', // ya koi aur specific domain
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true // ✅ If sending cookies or Authorization headers
-}));
+  credentials: true // agar cookies ya auth headers bhejne ho
+};
+
+app.use(cors(corsOptions));
+
 
 
 app.use(express.json());
