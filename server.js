@@ -21,20 +21,14 @@ app.locals = {
 
 // Middleware
 // app.use(cors());
-const allowedOrigins = ['http://localhost:5001', 'https://ui.torisedigital.com'];
 
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
-};
 
-app.use(cors(corsOptions));
+app.use(cors({
+  origin: ['https://ui.torisedigital.com'], // ✅ frontend origin
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true // 🔁 Only if you're using cookies / session
+}));
+
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
