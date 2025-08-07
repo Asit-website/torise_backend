@@ -27,7 +27,7 @@ app.use(express.urlencoded({ extended: true }));
 // MongoDB Connection
 // mongodb+srv://kayuar:fQl8JqeHeoky7Mt4@cluster0.c6rbzjx.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
 // mongodb+srv://shubham:XEhbqsmjt4cnACyz@cluster0.ewetbgm.mongodb.net/
-mongoose.connect('mongodb+srv://shubham:XEhbqsmjt4cnACyz@cluster0.ewetbgm.mongodb.net/')
+mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('Connected to MongoDB successfully');
   })
