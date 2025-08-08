@@ -20,16 +20,9 @@ app.locals = {
 };
 
 // Middleware
-// app.use(cors());
+app.use(cors());
 
-const corsOptions = {
-  origin: '*', // ya koi aur specific domain
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true // agar cookies ya auth headers bhejne ho
-};
 
-app.use(cors(corsOptions));
 
 
 

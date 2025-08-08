@@ -13,10 +13,11 @@ router.post('/api/conversations/save', async (req, res) => {
       // Handle chat conversation
       const conversationLogData = {
         call_sid: req.body.conversation_id,
-        application_sid: req.body.bot_id,
+        application_sid: req.body.bot_id, // Keep bot_id as application_sid for compatibility
         conversation_id: req.body.conversation_id,
         account_sid: req.body.bot_id,
-        channel_type: 'text', // Chat conversations are text type
+        client_id: req.body.client_id, // Add client_id for chat conversations
+        channel_type: 'chat', // Chat conversations are chat type
         call_type: 'inbound',
         started_at: req.body.started_at || new Date(),
         answered_at: req.body.started_at || new Date(),

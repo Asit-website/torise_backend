@@ -17,6 +17,7 @@ router.get('/dashboard', clientAuth, async (req, res) => {
     { $group: { _id: null, minutes: { $sum: '$duration_minutes' } } }
   ]);
   const totalTextSessions = await ConversationLog.countDocuments({ client_id: clientId, channel_type: 'text' });
+  const totalChatSessions = await ConversationLog.countDocuments({ client_id: clientId, channel_type: 'chat' });
   const mostUsedAvatar = await ConversationLog.aggregate([
     { $match: { client_id: clientId } },
     { $group: { _id: '$avatar_id', count: { $sum: 1 } } },
@@ -37,16 +38,22 @@ router.get('/dashboard', clientAuth, async (req, res) => {
     { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$started_at' } }, sessions: { $sum: 1 } } },
     { $sort: { _id: 1 } }
   ]);
+  const chatSessionsOverTime = await ConversationLog.aggregate([
+    { $match: { client_id: clientId, channel_type: 'chat' } },
+    { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$started_at' } }, sessions: { $sum: 1 } } },
+    { $sort: { _id: 1 } }
+  ]);
   const avatarUsage = await ConversationLog.aggregate([
     { $match: { client_id: clientId } },
     { $group: {
       _id: '$avatar_id',
       voice_minutes: { $sum: { $cond: [{ $eq: ['$channel_type', 'voice'] }, '$duration_minutes', 0] } },
-      text_sessions: { $sum: { $cond: [{ $eq: ['$channel_type', 'text'] }, 1, 0] } }
+      text_sessions: { $sum: { $cond: [{ $eq: ['$channel_type', 'text'] }, 1, 0] } },
+      chat_sessions: { $sum: { $cond: [{ $eq: ['$channel_type', 'chat'] }, 1, 0] } }
     }},
     { $lookup: { from: 'avatars', localField: '_id', foreignField: '_id', as: 'avatar' } },
     { $unwind: '$avatar' },
-    { $project: { name: '$avatar.name', voice_minutes: 1, text_sessions: 1 } }
+    { $project: { name: '$avatar.name', voice_minutes: 1, text_sessions: 1, chat_sessions: 1 } }
   ]);
 
   res.json({
@@ -54,12 +61,14 @@ router.get('/dashboard', clientAuth, async (req, res) => {
       total_conversations: totalConversations,
       total_voice_minutes: totalVoiceMinutes[0]?.minutes || 0,
       total_text_sessions: totalTextSessions,
+      total_chat_sessions: totalChatSessions,
       most_used_avatar: mostUsedAvatar[0]?.avatar?.name || null,
       last_session_date: lastSession?.started_at || null
     },
     charts: {
       voice_minutes_over_time: voiceMinutesOverTime,
-      text_sessions_over_time: textSessionsOverTime
+      text_sessions_over_time: textSessionsOverTime,
+      chat_sessions_over_time: chatSessionsOverTime
     },
     avatar_usage: avatarUsage
   });

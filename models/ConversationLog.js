@@ -7,7 +7,7 @@ const conversationLogSchema = new mongoose.Schema({
   account_sid: String,
   client_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Client' },
   avatar_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Avatar' },
-  channel_type: { type: String, enum: ['voice', 'text'] },
+  channel_type: { type: String, enum: ['voice', 'text', 'chat'] },
   call_type: { type: String, enum: ['inbound', 'outbound', 'transfer'] },
   started_at: Date,
   answered_at: Date,
