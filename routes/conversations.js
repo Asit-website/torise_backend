@@ -2,6 +2,29 @@ const express = require('express');
 const router = express.Router();
 const Conversation = require("../models/Conversation");
 const ConversationLog = require("../models/ConversationLog");
+const Bot = require("../models/Bot");
+const axios = require('axios');
+
+// Validate webhook URL
+const validateWebhookUrl = async (url) => {
+  try {
+    const testPayload = {
+      message: 'test',
+      sessionId: 'test_session',
+      timestamp: new Date().toISOString()
+    };
+
+    const response = await axios.post(url, testPayload, {
+      timeout: 5000,
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    return response.status >= 200 && response.status < 300;
+  } catch (error) {
+    console.error('Webhook validation failed:', error);
+    return false;
+  }
+};
 
 // POST /api/conversations/save - Save td_engine data to ConversationLog table
 router.post('/api/conversations/save', async (req, res) => {
@@ -10,6 +33,26 @@ router.post('/api/conversations/save', async (req, res) => {
     
     // Check if this is a chat conversation
     if (req.body.channel_type === 'chat' || req.body.bot_id) {
+      // Validate webhook URL for chat conversations
+      try {
+        const bot = await Bot.findById(req.body.bot_id);
+        if (bot && bot.webhook_url) {
+          const isWebhookValid = await validateWebhookUrl(bot.webhook_url);
+          if (!isWebhookValid) {
+            console.log('❌ Not saving conversation - webhook URL is invalid');
+            return res.status(400).json({ 
+              message: 'Webhook URL is not responding. Conversation not saved.',
+              error: 'Invalid webhook URL'
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error validating webhook:', error);
+        return res.status(400).json({ 
+          message: 'Failed to validate webhook URL. Conversation not saved.',
+          error: 'Webhook validation failed'
+        });
+      }
       // Handle chat conversation
       const conversationLogData = {
         call_sid: req.body.conversation_id,
@@ -172,26 +215,24 @@ router.post('/report/entry', async (req, res) => {
 // GET /api/conversations - Get all conversations with filters and pagination
 router.get('/api/conversations', async (req, res) => {
   try {
-    const { clientId, channel_type, application_sid, page = 1, limit = 10 } = req.query;
+    const { clientId, channel_type, application_sid, page = 1, limit = 1000 } = req.query;
     const filter = {};
     
     if (clientId && clientId !== '') filter.client_id = clientId;
     if (channel_type && channel_type !== '') filter.channel_type = channel_type;
     if (application_sid && application_sid !== '') filter.application_sid = application_sid;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    // If no specific filters, get all conversations (for admin view)
     const conversations = await ConversationLog.find(filter)
-      .skip(skip)
-      .limit(parseInt(limit))
       .sort({ created_at: -1 });
       
-    const totalDocs = await ConversationLog.countDocuments(filter);
+    const totalDocs = conversations.length;
 
     res.json({
       conversations,
       pagination: {
         current: parseInt(page),
-        total: Math.ceil(totalDocs / limit),
+        total: 1,
         totalDocs
       }
     });

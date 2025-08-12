@@ -19,6 +19,11 @@ router.post('/', async (req, res) => {
     
     // Set default chat settings for chat bots
     if (req.body.type === 'chat') {
+      // Validate webhook URL for chat bots
+      if (!req.body.webhook_url || req.body.webhook_url.trim() === '') {
+        return res.status(400).json({ error: 'Webhook URL is required for Chat bots' });
+      }
+      
       if (!req.body.welcome_message) {
         req.body.welcome_message = 'Welcome! How can I help you today?';
       }
@@ -124,6 +129,11 @@ router.put('/:id', async (req, res) => {
     
     // Set default chat settings for chat bots
     if (req.body.type === 'chat') {
+      // Validate webhook URL for chat bots
+      if (!req.body.webhook_url || req.body.webhook_url.trim() === '') {
+        return res.status(400).json({ error: 'Webhook URL is required for Chat bots' });
+      }
+      
       if (!req.body.welcome_message) {
         req.body.welcome_message = 'Welcome! How can I help you today?';
       }
