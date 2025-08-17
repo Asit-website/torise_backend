@@ -5,81 +5,191 @@ const { auth } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const router = express.Router();
 
-// GET /api/users - List users with filters, search, sort, pagination
-router.get('/', auth(['internal_admin', 'super_admin']), async (req, res) => {
-  const { search, client, role, status, page = 1, limit = 20, sort = '-created_at' } = req.query;
-  const query = {};
-  if (search) {
-    query.$or = [
-      { firstName: { $regex: search, $options: 'i' } },
-      { lastName: { $regex: search, $options: 'i' } }
-    ];
-  }
-  if (client) query.client_id = client;
-  if (role) query.role = role;
-  if (status) query.status = status;
-  const users = await User.find(query)
-    .populate('client_id')
-    .skip((page - 1) * limit)
-    .limit(Number(limit))
-    .sort(sort);
-  const total = await User.countDocuments(query);
-  res.json({ users, total, page: Number(page), totalPages: Math.ceil(total / limit) });
-});
-
-// POST /api/users - Create/invite user
-router.post('/', auth(['internal_admin', 'super_admin']), async (req, res) => {
-  let { firstName, lastName, email, role, client_id, application_sid, status, password } = req.body;
-  const existing = await User.findOne({ email });
-  if (existing) return res.status(400).json({ message: 'Email already exists' });
-  let plainPassword = password;
-  if (!plainPassword) {
-    plainPassword = Math.random().toString(36).slice(-8);
-  }
-  const hashed_password = await bcrypt.hash(plainPassword, 12);
-
-  // If client_id is provided and application_sid is not, fetch from client
-  if (client_id && (!application_sid || application_sid.length === 0)) {
-    const client = await Client.findById(client_id);
-    if (client && Array.isArray(client.application_sid)) {
-      application_sid = client.application_sid;
+// GET /api/users - Get all users
+router.get('/', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
+  try {
+    const { search = '', page = 1, limit = 10, status, role } = req.query;
+    const skip = (page - 1) * limit;
+    
+    // Build query
+    const query = {};
+    if (search) {
+      query.$or = [
+        { firstName: { $regex: search, $options: 'i' } },
+        { lastName: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
     }
+    if (status) query.status = status;
+    if (role) query.role = role;
+    
+    const users = await User.find(query)
+      .populate('client_id', 'name')
+      .skip(skip)
+      .limit(parseInt(limit))
+      .sort({ created_at: -1 });
+    
+    const total = await User.countDocuments(query);
+    
+    res.json({
+      users,
+      pagination: {
+        current: parseInt(page),
+        total: Math.ceil(total / limit),
+        totalUsers: total
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ message: 'Error fetching users' });
   }
-
-  const user = new User({ firstName, lastName, email, role, client_id, application_sid, status: status || 'invited', hashed_password });
-  await user.save();
-  // Debug log
-  console.log('User created:', { email: user.email, status: user.status, hashed_password: user.hashed_password, plainPassword });
-  // TODO: Send invite email with plainPassword
-  res.status(201).json({ user, password: plainPassword });
 });
 
-// PUT /api/users/:id - Edit user (role, status, application_sid)
-router.put('/:id', auth(['internal_admin', 'super_admin']), async (req, res) => {
-  const { firstName, lastName, role, client_id, application_sid, status } = req.body;
-  const user = await User.findByIdAndUpdate(
-    req.params.id,
-    { firstName, lastName, role, client_id, application_sid, status },
-    { new: true, runValidators: true }
-  );
-  if (!user) return res.status(404).json({ message: 'User not found' });
-  res.json(user);
+// POST /api/users - Create new user
+router.post('/', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
+  try {
+    const { firstName, lastName, email, password, role, client_id, status = 'active' } = req.body;
+    
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User with this email already exists' });
+    }
+    
+    // Hash password
+    const bcrypt = require('bcryptjs');
+    const hashed_password = await bcrypt.hash(password, 12);
+    
+    // Fetch client's application_sid if client_id is provided
+    let application_sid = [];
+    if (client_id) {
+      const Client = require('../models/Client');
+      const client = await Client.findById(client_id);
+      if (client && client.application_sid) {
+        application_sid = client.application_sid;
+        console.log(`Fetched application_sid from client ${client_id}:`, application_sid);
+      }
+    }
+    
+    // Create user
+    const user = new User({
+      firstName,
+      lastName,
+      email,
+      hashed_password,
+      role,
+      client_id,
+      application_sid, // Set the application_sid from client
+      status,
+      created_by: req.user._id
+    });
+    
+    await user.save();
+    
+    console.log(`User created with application_sid:`, application_sid);
+    
+    res.status(201).json({
+      message: 'User created successfully',
+      user: user.toJSON()
+    });
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({ message: 'Error creating user' });
+  }
 });
 
-// PATCH /api/users/:id/status - Toggle/Set status
-router.patch('/:id/status', auth(['internal_admin', 'super_admin']), async (req, res) => {
-  const { status } = req.body;
-  const user = await User.findByIdAndUpdate(req.params.id, { status }, { new: true });
-  if (!user) return res.status(404).json({ message: 'User not found' });
-  res.json({ message: 'Status updated', user });
+// PUT /api/users/:id - Update user
+router.put('/:id', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
+  try {
+    const { firstName, lastName, email, role, client_id, status } = req.body;
+    const userId = req.params.id;
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Update fields
+    if (firstName) user.firstName = firstName;
+    if (lastName) user.lastName = lastName;
+    if (email) user.email = email;
+    if (role) user.role = role;
+    if (status) user.status = status;
+    
+    // Update client_id and application_sid
+    if (client_id !== undefined) {
+      user.client_id = client_id;
+      
+      // Fetch client's application_sid if client_id is provided
+      if (client_id) {
+        const Client = require('../models/Client');
+        const client = await Client.findById(client_id);
+        if (client && client.application_sid) {
+          user.application_sid = client.application_sid;
+          console.log(`Updated user application_sid from client ${client_id}:`, client.application_sid);
+        } else {
+          user.application_sid = [];
+          console.log(`Cleared user application_sid - no client found or no application_sid`);
+        }
+      } else {
+        user.application_sid = [];
+        console.log(`Cleared user application_sid - no client_id provided`);
+      }
+    }
+    
+    await user.save();
+    
+    res.json({
+      message: 'User updated successfully',
+      user: user.toJSON()
+    });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ message: 'Error updating user' });
+  }
 });
 
-// DELETE /api/users/:id - Delete user (only if no conversation logs)
-router.delete('/:id', auth(['internal_admin', 'super_admin']), async (req, res) => {
-  // TODO: Check for conversation logs before deleting
-  const user = await User.findByIdAndDelete(req.params.id);
-  if (!user) return res.status(404).json({ message: 'User not found' });
-  res.json({ message: 'User deleted' });
+// PATCH /api/users/:id/status - Update user status
+router.patch('/:id/status', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
+  try {
+    const { status } = req.body;
+    const userId = req.params.id;
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    user.status = status;
+    await user.save();
+    
+    res.json({
+      message: 'User status updated successfully',
+      user: user.toJSON()
+    });
+  } catch (error) {
+    console.error('Error updating user status:', error);
+    res.status(500).json({ message: 'Error updating user status' });
+  }
+});
+
+// DELETE /api/users/:id - Delete user
+router.delete('/:id', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    await User.findByIdAndDelete(userId);
+    
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ message: 'Error deleting user' });
+  }
 });
 
 module.exports = router; 

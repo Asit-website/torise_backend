@@ -38,12 +38,14 @@ const conversationLogSchema = new mongoose.Schema({
   }],
   audio_url: String,
   ai_summary: String,
+  summary: String, // New summary field for conversation summarization
   follow_up_status: String,
   follow_up_notes: String,
   lead_source: String,
   rag_confidence_score: { type: String, enum: ['high', 'medium', 'low'] },
   feedback_rating: Number,
-  created_at: { type: Date, default: Date.now }
+  created_at: { type: Date, default: Date.now },
+  updated_at: { type: Date, default: Date.now }
 });
 
 module.exports = mongoose.model('ConversationLog', conversationLogSchema); 

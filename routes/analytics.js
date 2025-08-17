@@ -2,21 +2,22 @@ const express = require('express');
 const ConversationLog = require('../models/ConversationLog');
 const Client = require('../models/Client');
 const Avatar = require('../models/Avatar');
+const User = require('../models/User');
 const { auth } = require('../middleware/auth');
 const router = express.Router();
 const { Parser } = require('json2csv');
 
 // GET /api/analytics/kpis - Top row metrics
-router.get('/kpis', auth(['internal_admin', 'super_admin']), async (req, res) => {
+router.get('/kpis', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
   const totalClients = await Client.countDocuments({ status: 'active' });
-  const totalUsers = 0; // Implement user count as needed
+  const totalUsers = await User.countDocuments(); // Removed status filter to count all users
   const totalConversations = await ConversationLog.countDocuments();
   const activeAvatars = await Avatar.countDocuments({ status: 'live' });
   res.json({ totalClients, totalUsers, totalConversations, activeAvatars });
 });
 
 // GET /api/analytics/conversations-over-time
-router.get('/conversations-over-time', auth(['internal_admin', 'super_admin']), async (req, res) => {
+router.get('/conversations-over-time', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
   const { days = 30, client } = req.query;
   const match = {};
   if (client) match.client_id = client;
@@ -32,15 +33,39 @@ router.get('/conversations-over-time', auth(['internal_admin', 'super_admin']), 
 });
 
 // GET /api/analytics/voice-minutes-over-time
-router.get('/voice-minutes-over-time', auth(['internal_admin', 'super_admin']), async (req, res) => {
+router.get('/voice-minutes-over-time', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
   const { days = 30, client } = req.query;
   const match = { channel_type: 'voice' };
   if (client) match.client_id = client;
   const data = await ConversationLog.aggregate([
     { $match: match },
+    { $addFields: {
+      durationNumeric: { 
+        $let: {
+          vars: {
+            durationStr: { $ifNull: ['$duration_minutes', '0'] }
+          },
+          in: {
+            $cond: {
+              if: { $regexMatch: { input: '$$durationStr', regex: '^[0-9]+(\\.[0-9]+)?[mh]?$' } },
+              then: {
+                $toDouble: {
+                  $replaceAll: {
+                    input: { $replaceAll: { input: '$$durationStr', find: 'm', replacement: '' } },
+                    find: 'h',
+                    replacement: ''
+                  }
+                }
+              },
+              else: 0
+            }
+          }
+        }
+      }
+    }},
     { $group: {
       _id: { $dateToString: { format: '%Y-%m-%d', date: '$started_at' } },
-      minutes: { $sum: '$duration_minutes' }
+      minutes: { $sum: '$durationNumeric' }
     }},
     { $sort: { _id: 1 } }
   ]);
@@ -48,7 +73,7 @@ router.get('/voice-minutes-over-time', auth(['internal_admin', 'super_admin']), 
 });
 
 // GET /api/analytics/top-avatars
-router.get('/top-avatars', auth(['internal_admin', 'super_admin']), async (req, res) => {
+router.get('/top-avatars', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
   const { channel = 'text', limit = 5 } = req.query;
   const match = { channel_type: channel };
   const data = await ConversationLog.aggregate([
@@ -72,7 +97,7 @@ router.get('/top-avatars', auth(['internal_admin', 'super_admin']), async (req, 
 });
 
 // GET /api/analytics/fallback-rate
-router.get('/fallback-rate', auth(['internal_admin', 'super_admin']), async (req, res) => {
+router.get('/fallback-rate', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
   // Fallback = message_log with "Sorry, I didn't understand" or similar
   const { client } = req.query;
   const match = { channel_type: 'text' };
@@ -87,7 +112,7 @@ router.get('/fallback-rate', auth(['internal_admin', 'super_admin']), async (req
 });
 
 // GET /api/analytics/clients-table
-router.get('/clients-table', auth(['internal_admin', 'super_admin']), async (req, res) => {
+router.get('/clients-table', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
   // Aggregate usage by client
   const data = await ConversationLog.aggregate([
     { $group: {
@@ -119,13 +144,14 @@ router.get('/clients-table', auth(['internal_admin', 'super_admin']), async (req
 });
 
 // GET /api/analytics/avatars-table
-router.get('/avatars-table', auth(['internal_admin', 'super_admin']), async (req, res) => {
+router.get('/avatars-table', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
   // Aggregate usage by avatar
   const data = await ConversationLog.aggregate([
     { $group: {
       _id: '$avatar_id',
       sessions: { $sum: 1 },
       duration: { $sum: '$duration_minutes' },
+      avgDuration: { $avg: '$duration_minutes' },
       lastActive: { $max: '$started_at' }
     }},
     { $lookup: {
@@ -138,9 +164,9 @@ router.get('/avatars-table', auth(['internal_admin', 'super_admin']), async (req
     { $project: {
       _id: 0,
       avatarName: '$avatar.name',
-      type: '$avatar.type',
       sessions: 1,
       duration: 1,
+      avgDuration: 1,
       lastActive: 1
     }}
   ]);
@@ -148,7 +174,7 @@ router.get('/avatars-table', auth(['internal_admin', 'super_admin']), async (req
 });
 
 // GET /api/analytics/export
-router.get('/export', auth(['internal_admin', 'super_admin']), async (req, res) => {
+router.get('/export', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
   const { type = 'csv', scope = 'client' } = req.query;
   let data;
   if (scope === 'client') {

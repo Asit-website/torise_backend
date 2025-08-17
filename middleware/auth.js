@@ -5,6 +5,7 @@ const User = require('../models/User');
 const auth = (roles = []) => {
   return async (req, res, next) => {
     try {
+      console.log('Auth middleware - Request received for:', req.path);
       const token = req.header('Authorization')?.replace('Bearer ', '');
       console.log('Auth middleware - Token received:', token ? 'Yes' : 'No');
       
@@ -16,7 +17,7 @@ const auth = (roles = []) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       console.log('Auth middleware - Token decoded, userId:', decoded.userId);
       
-      const user = await User.findById(decoded.userId);
+      const user = await User.findById(decoded.userId).select('_id email firstName lastName role status application_sid client_id');
       console.log('Auth middleware - User found:', user ? user.email : 'No user found');
       
       if (!user) {

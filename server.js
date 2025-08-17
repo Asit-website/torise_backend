@@ -8,30 +8,12 @@ dotenv.config({ path: './config.env' });
 
 const app = express();
 
-const { createServer } = require('http');
-const { createEndpoint } = require('@jambonz/node-client-ws');
-const server = createServer(app);
-const makeService = createEndpoint({ server });
-const logger = require('pino')({ level: process.env.LOGLEVEL || 'info' });
-
-app.locals = {
-  ...app.locals,
-  logger
-};
-
 // Middleware
 app.use(cors());
-
-
-
-
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // MongoDB Connection
-// mongodb+srv://kayuar:fQl8JqeHeoky7Mt4@cluster0.c6rbzjx.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
-// mongodb+srv://shubham:XEhbqsmjt4cnACyz@cluster0.ewetbgm.mongodb.net/
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('Connected to MongoDB successfully');
@@ -44,7 +26,6 @@ mongoose.connect(process.env.MONGODB_URI)
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const clientRoutes = require('./routes/clients');
-// const conversationRoutes = require('./routes/conversations');
 const avatarRoutes = require('./routes/avatars');
 const analyticsRoutes = require('./routes/analytics');
 const clientApplicationRoutes = require('./routes/clientApplications');
@@ -55,14 +36,12 @@ const botRoutes = require('./routes/bots');
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/clients', clientRoutes);
-// app.use('/api/conversations', conversationRoutes);
 app.use(require("./routes/conversations"));
 app.use('/api/avatars', avatarRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/client-applications', clientApplicationRoutes);
 app.use('/api/client', clientPortalRoutes);
 app.use('/api/admin/bots', botRoutes);
-require('./routes/elevenlabs-s2s')({ logger, makeService });
 
 // Health check route
 app.get('/api/health', (req, res) => {
@@ -99,6 +78,6 @@ app.use('*', (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-server.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 }); 

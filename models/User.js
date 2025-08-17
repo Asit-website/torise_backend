@@ -9,7 +9,7 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     enum: [
-      'internal_admin', 'super_admin', 'client_admin', 'client_manager', 'client_viewer',
+      'admin', 'internal_admin', 'super_admin', 'client_admin', 'client_manager', 'client_viewer',
       'business_manager', 'campaign_manager', 'support_agent'
     ],
     required: true
