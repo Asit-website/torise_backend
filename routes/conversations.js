@@ -98,7 +98,7 @@ router.post('/api/conversations/save', async (req, res) => {
       
       // Generate and save summary for chat conversations
       try {
-        const ConversationSummarizer = require('../../td_engine/lib/routes/conversation-summarizer');
+        const ConversationSummarizer = require('../services/ConversationSummarizer');
         const summarizer = new ConversationSummarizer();
         
         if (conversationLogData.message_log && conversationLogData.message_log.length > 0) {
@@ -360,6 +360,97 @@ router.put('/api/conversations/:id/summary', async (req, res) => {
   } catch (err) {
     console.error('Error updating conversation summary:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT route to update conversation summary
+router.put('/:id/summary', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { summary } = req.body;
+    
+    console.log(`Updating summary for conversation ID: ${id}`);
+    console.log('Summary:', summary);
+    
+    const conversation = await ConversationLog.findById(id);
+    if (!conversation) {
+      return res.status(404).json({ message: 'Conversation not found' });
+    }
+    
+    conversation.summary = summary;
+    await conversation.save();
+    
+    console.log(`✅ Summary updated for conversation: ${id}`);
+    res.json({ 
+      message: 'Summary updated successfully',
+      conversation_id: conversation.conversation_id,
+      summary: summary
+    });
+    
+  } catch (error) {
+    console.error('Error updating summary:', error);
+    res.status(500).json({ 
+      message: 'Error updating summary',
+      error: error.message 
+    });
+  }
+});
+
+// Test route for summarization
+router.post('/test-summarization', async (req, res) => {
+  try {
+    console.log('Testing summarization...');
+    
+    const ConversationSummarizer = require('../services/ConversationSummarizer');
+    const summarizer = new ConversationSummarizer();
+    
+    // Test conversation data
+    const testMessages = [
+      {
+        sender: 'user',
+        message: 'Hello, I need help with my order',
+        timestamp: new Date()
+      },
+      {
+        sender: 'agent',
+        message: 'Hello! I\'d be happy to help you with your order. Could you please provide your order number?',
+        timestamp: new Date()
+      },
+      {
+        sender: 'user',
+        message: 'My order number is 12345',
+        timestamp: new Date()
+      },
+      {
+        sender: 'agent',
+        message: 'Thank you! I can see your order #12345. It shows as "In Transit" and should be delivered tomorrow. Is there anything specific about your order you\'d like to know?',
+        timestamp: new Date()
+      }
+    ];
+    
+    console.log('Testing summarization with test messages...');
+    const summary = await summarizer.summarizeConversation(testMessages);
+    
+    if (summary) {
+      console.log('✅ Test summarization successful:', summary);
+      res.json({
+        message: 'Summarization test successful',
+        summary: summary
+      });
+    } else {
+      console.log('❌ Test summarization failed');
+      res.status(500).json({
+        message: 'Summarization test failed',
+        error: 'No summary generated'
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error testing summarization:', error);
+    res.status(500).json({
+      message: 'Error testing summarization',
+      error: error.message
+    });
   }
 });
 
