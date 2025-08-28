@@ -14,7 +14,7 @@ router.get('/', auth(['admin', 'internal_admin', 'super_admin']), async (req, re
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } }
+        { contact_email: { $regex: search, $options: 'i' } }
       ];
     }
     if (status) query.status = status;
@@ -57,23 +57,41 @@ router.get('/:id', auth(['admin', 'internal_admin', 'super_admin']), async (req,
 // POST /api/clients - Create new client
 router.post('/', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
   try {
-    const { name, email, phone, address, status = 'active', application_sid } = req.body;
+    const { 
+      name, 
+      contact_email, 
+      country, 
+      industry,
+      status = 'active', 
+      application_sid,
+      supports_text,
+      supports_voice,
+      notes,
+      service,
+      default_language
+    } = req.body;
     
-    // Check if client already exists
-    const existingClient = await Client.findOne({ email });
-    if (existingClient) {
-      return res.status(400).json({ message: 'Client with this email already exists' });
+    // Check if client already exists with this contact_email
+    if (contact_email) {
+      const existingClient = await Client.findOne({ contact_email });
+      if (existingClient) {
+        return res.status(400).json({ message: 'Client with this email already exists' });
+      }
     }
     
     // Create client
     const client = new Client({
       name,
-      email,
-      phone,
-      address,
+      contact_email,
+      country,
+      industry,
       status,
-      application_sid: application_sid || [],
-      created_by: req.user._id
+      application_sid: application_sid && typeof application_sid === 'string' ? application_sid.split(',').map(sid => sid.trim()) : [],
+      supports_text: supports_text || false,
+      supports_voice: supports_voice || false,
+      notes,
+      service: service || 'Standard',
+      default_language: default_language || 'en'
     });
     
     await client.save();
@@ -91,7 +109,19 @@ router.post('/', auth(['admin', 'internal_admin', 'super_admin']), async (req, r
 // PUT /api/clients/:id - Update client
 router.put('/:id', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
   try {
-    const { name, email, phone, address, status, application_sid } = req.body;
+    const { 
+      name, 
+      contact_email, 
+      country, 
+      industry,
+      status, 
+      application_sid,
+      supports_text,
+      supports_voice,
+      notes,
+      service,
+      default_language
+    } = req.body;
     const clientId = req.params.id;
     
     const client = await Client.findById(clientId);
@@ -99,14 +129,32 @@ router.put('/:id', auth(['admin', 'internal_admin', 'super_admin']), async (req,
       return res.status(404).json({ message: 'Client not found' });
     }
     
+    // Check if contact_email is being changed and if it already exists
+    if (contact_email && contact_email !== client.contact_email) {
+      const existingClient = await Client.findOne({ contact_email });
+      if (existingClient) {
+        return res.status(400).json({ message: 'Client with this email already exists' });
+      }
+    }
+    
     // Update fields
     if (name) client.name = name;
-    if (email) client.email = email;
-    if (phone) client.phone = phone;
-    if (address) client.address = address;
+    if (contact_email) client.contact_email = contact_email;
+    if (country) client.country = country;
+    if (industry !== undefined) client.industry = industry;
     if (status) client.status = status;
-    if (application_sid) client.application_sid = application_sid;
+    if (application_sid && typeof application_sid === 'string') {
+      client.application_sid = application_sid.split(',').map(sid => sid.trim());
+    } else if (application_sid && Array.isArray(application_sid)) {
+      client.application_sid = application_sid;
+    }
+    if (supports_text !== undefined) client.supports_text = supports_text;
+    if (supports_voice !== undefined) client.supports_voice = supports_voice;
+    if (notes !== undefined) client.notes = notes;
+    if (service) client.service = service;
+    if (default_language) client.default_language = default_language;
     
+    client.updated_at = new Date();
     await client.save();
     
     res.json({
@@ -140,6 +188,48 @@ router.patch('/:id/status', auth(['admin', 'internal_admin', 'super_admin']), as
   } catch (error) {
     console.error('Error updating client status:', error);
     res.status(500).json({ message: 'Error updating client status' });
+  }
+});
+
+// DELETE /api/clients/:id - Delete client
+router.delete('/:id', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
+  try {
+    const clientId = req.params.id;
+    
+    const client = await Client.findById(clientId);
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+    
+    // Check if client has any associated users
+    const User = require('../models/User');
+    const associatedUsers = await User.find({ client_id: clientId });
+    
+    if (associatedUsers.length > 0) {
+      return res.status(400).json({ 
+        message: 'Cannot delete client. There are users associated with this client. Please remove or reassign users first.' 
+      });
+    }
+    
+    // Check if client has any associated conversations
+    const ConversationLog = require('../models/ConversationLog');
+    const associatedConversations = await ConversationLog.find({ client_id: clientId });
+    
+    if (associatedConversations.length > 0) {
+      return res.status(400).json({ 
+        message: 'Cannot delete client. There are conversations associated with this client. Please remove conversations first.' 
+      });
+    }
+    
+    // Delete the client
+    await Client.findByIdAndDelete(clientId);
+    
+    res.json({
+      message: 'Client deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting client:', error);
+    res.status(500).json({ message: 'Error deleting client' });
   }
 });
 

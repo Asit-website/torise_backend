@@ -30,20 +30,20 @@ router.get('/conversations-over-time', auth(['admin', 'internal_admin', 'super_a
     const match = {
       started_at: { $gte: startDate, $lte: endDate }
     };
-    if (client) match.client_id = client;
+  if (client) match.client_id = client;
     if (channel) match.channel_type = channel;
     
-    const data = await ConversationLog.aggregate([
-      { $match: match },
-      { $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$started_at' } },
-        count: { $sum: 1 }
-      }},
-      { $sort: { _id: 1 } }
-    ]);
+  const data = await ConversationLog.aggregate([
+    { $match: match },
+    { $group: {
+      _id: { $dateToString: { format: '%Y-%m-%d', date: '$started_at' } },
+      count: { $sum: 1 }
+    }},
+    { $sort: { _id: 1 } }
+  ]);
     
     console.log(`Conversations over time for ${days} days:`, data);
-    res.json(data);
+  res.json(data);
   } catch (error) {
     console.error('Error fetching conversations over time:', error);
     res.status(500).json({ error: 'Failed to fetch conversations over time' });
@@ -182,6 +182,99 @@ router.get('/voice-minutes-over-time', auth(['admin', 'internal_admin', 'super_a
   } catch (error) {
     console.error('Error fetching voice minutes over time:', error);
     res.status(500).json({ error: 'Failed to fetch voice minutes over time' });
+  }
+});
+
+// GET /api/analytics/chat-minutes-over-time
+router.get('/chat-minutes-over-time', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
+  try {
+  const { days = 30, client } = req.query;
+    const daysNum = parseInt(days);
+    
+    // Calculate date range
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - daysNum);
+    
+    const match = {
+      channel_type: { $in: ['chat', 'text'] },
+      $or: [
+        { started_at: { $gte: startDate, $lte: endDate } },
+        { created_at: { $gte: startDate, $lte: endDate } }
+      ]
+    };
+  if (client) match.client_id = client;
+    
+  const data = await ConversationLog.aggregate([
+    { $match: match },
+      { $addFields: {
+        // Use the appropriate date field for grouping
+        dateField: {
+          $cond: {
+            if: { $ne: ['$started_at', null] },
+            then: '$started_at',
+            else: '$created_at'
+          }
+        },
+        durationNumeric: { 
+          $let: {
+            vars: {
+              durationStr: { $ifNull: ['$duration_minutes', '0'] }
+            },
+            in: {
+              $cond: {
+                if: { $regexMatch: { input: '$$durationStr', regex: '.*' } },
+                then: {
+                  $let: {
+                    vars: {
+                      // Check if it's seconds (ends with 's')
+                      isSeconds: { $regexMatch: { input: '$$durationStr', regex: '.*s$' } },
+                      // Check if it's minutes (ends with 'm')
+                      isMinutes: { $regexMatch: { input: '$$durationStr', regex: '.*m$' } },
+                      // Extract numeric value
+                      numericValue: {
+                        $toDouble: {
+                          $replaceAll: {
+                            input: { $replaceAll: { input: '$$durationStr', find: 'm', replacement: '' } },
+                            find: 's',
+                            replacement: ''
+                          }
+                        }
+                      }
+                    },
+                    in: {
+                      $cond: {
+                        if: '$$isSeconds',
+                        then: { $divide: ['$$numericValue', 60] }, // Convert seconds to minutes
+                        else: {
+                          $cond: {
+                            if: '$$isMinutes',
+                            then: '$$numericValue', // Keep minutes as is
+                            else: '$$numericValue' // Assume minutes if no unit
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                else: 0
+              }
+            }
+          }
+        }
+      }},
+    { $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$dateField' } },
+        minutes: { $sum: '$durationNumeric' }
+    }},
+    { $sort: { _id: 1 } }
+  ]);
+    
+    console.log(`Chat minutes over time for ${days} days:`, data);
+  res.json(data);
+  } catch (error) {
+    console.error('Error fetching chat minutes over time:', error);
+    res.status(500).json({ error: 'Failed to fetch chat minutes over time' });
   }
 });
 
@@ -372,6 +465,7 @@ router.get('/usage-details', auth(['admin', 'internal_admin', 'super_admin']), a
     const labels = [];
     const minutesData = [];
     const textData = [];
+    const chatMinutesArray = [];
     
     for (let i = 0; i < daysNum; i++) {
       const date = new Date(startDate);
@@ -388,6 +482,7 @@ router.get('/usage-details', auth(['admin', 'internal_admin', 'super_admin']), a
       // Initialize with 0
       minutesData.push(0);
       textData.push(0);
+      chatMinutesArray.push(0);
     }
     
     // Fetch voice minutes data
@@ -450,6 +545,84 @@ router.get('/usage-details', auth(['admin', 'internal_admin', 'super_admin']), a
       { $sort: { _id: 1 } }
     ]);
     
+    // Fetch chat minutes data
+    const chatMinutesAggregation = await ConversationLog.aggregate([
+      {
+        $match: {
+          channel_type: { $in: ['chat', 'text'] },
+          $or: [
+            { started_at: { $gte: startDate, $lte: endDate } },
+            { created_at: { $gte: startDate, $lte: endDate } }
+          ]
+        }
+      },
+      {
+        $addFields: {
+          // Use the appropriate date field for grouping
+          dateField: {
+            $cond: {
+              if: { $ne: ['$started_at', null] },
+              then: '$started_at',
+              else: '$created_at'
+            }
+          },
+          durationNumeric: {
+            $let: {
+              vars: {
+                durationStr: { $ifNull: ['$duration_minutes', '0'] }
+              },
+              in: {
+                $cond: {
+                  if: { $regexMatch: { input: '$$durationStr', regex: '.*' } },
+                  then: {
+                    $let: {
+                      vars: {
+                        // Check if it's seconds (ends with 's')
+                        isSeconds: { $regexMatch: { input: '$$durationStr', regex: '.*s$' } },
+                        // Check if it's minutes (ends with 'm')
+                        isMinutes: { $regexMatch: { input: '$$durationStr', regex: '.*m$' } },
+                        // Extract numeric value
+                        numericValue: {
+                          $toDouble: {
+                            $replaceAll: {
+                              input: { $replaceAll: { input: '$$durationStr', find: 'm', replacement: '' } },
+                              find: 's',
+                              replacement: ''
+                            }
+                          }
+                        }
+                      },
+                      in: {
+                        $cond: {
+                          if: '$$isSeconds',
+                          then: { $divide: ['$$numericValue', 60] }, // Convert seconds to minutes
+                          else: {
+                            $cond: {
+                              if: '$$isMinutes',
+                              then: '$$numericValue', // Keep minutes as is
+                              else: '$$numericValue' // Assume minutes if no unit
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  else: 0
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$dateField' } },
+          minutes: { $sum: '$durationNumeric' }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+    
     // Map data to arrays
     voiceMinutesData.forEach(item => {
       const dayIndex = Math.floor((new Date(item._id) - startDate) / (1000 * 60 * 60 * 24));
@@ -465,10 +638,19 @@ router.get('/usage-details', auth(['admin', 'internal_admin', 'super_admin']), a
       }
     });
     
+    // Map chat minutes data to arrays
+    chatMinutesAggregation.forEach(item => {
+      const dayIndex = Math.floor((new Date(item._id) - startDate) / (1000 * 60 * 60 * 24));
+      if (dayIndex >= 0 && dayIndex < daysNum) {
+        chatMinutesArray[dayIndex] = Math.round(item.minutes * 10) / 10; // Round to 1 decimal place
+      }
+    });
+    
     res.json({
       labels,
       minutes: minutesData,
-      text: textData
+      text: textData,
+      chatMinutes: chatMinutesArray
     });
   } catch (error) {
     console.error('Error fetching usage details:', error);
@@ -619,6 +801,99 @@ router.get('/export', auth(['admin', 'internal_admin', 'super_admin']), async (r
     return res.send(csv);
   } else {
     res.json(data);
+  }
+});
+
+// GET /api/analytics/chat-minutes-over-time
+router.get('/chat-minutes-over-time', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
+  try {
+    const { days = 30, client } = req.query;
+    const daysNum = parseInt(days);
+    
+    // Calculate date range
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - daysNum);
+    
+    const match = {
+      channel_type: { $in: ['chat', 'text'] },
+      $or: [
+        { started_at: { $gte: startDate, $lte: endDate } },
+        { created_at: { $gte: startDate, $lte: endDate } }
+      ]
+    };
+    if (client) match.client_id = client;
+    
+    const data = await ConversationLog.aggregate([
+      { $match: match },
+      { $addFields: {
+        // Use the appropriate date field for grouping
+        dateField: {
+          $cond: {
+            if: { $ne: ['$started_at', null] },
+            then: '$started_at',
+            else: '$created_at'
+          }
+        },
+        durationNumeric: { 
+          $let: {
+            vars: {
+              durationStr: { $ifNull: ['$duration_minutes', '0'] }
+            },
+            in: {
+              $cond: {
+                if: { $regexMatch: { input: '$$durationStr', regex: '.*' } },
+                then: {
+                  $let: {
+                    vars: {
+                      // Check if it's seconds (ends with 's')
+                      isSeconds: { $regexMatch: { input: '$$durationStr', regex: '.*s$' } },
+                      // Check if it's minutes (ends with 'm')
+                      isMinutes: { $regexMatch: { input: '$$durationStr', regex: '.*m$' } },
+                      // Extract numeric value
+                      numericValue: {
+                        $toDouble: {
+                          $replaceAll: {
+                            input: { $replaceAll: { input: '$$durationStr', find: 'm', replacement: '' } },
+                            find: 's',
+                            replacement: ''
+                          }
+                        }
+                      }
+                    },
+                    in: {
+                      $cond: {
+                        if: '$$isSeconds',
+                        then: { $divide: ['$$numericValue', 60] }, // Convert seconds to minutes
+                        else: {
+                          $cond: {
+                            if: '$$isMinutes',
+                            then: '$$numericValue', // Keep minutes as is
+                            else: '$$numericValue' // Assume minutes if no unit
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                else: 0
+              }
+            }
+          }
+        }
+      }},
+      { $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$dateField' } },
+        minutes: { $sum: '$durationNumeric' }
+      }},
+      { $sort: { _id: 1 } }
+    ]);
+    
+    console.log(`Chat minutes over time for ${days} days:`, data);
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching chat minutes over time:', error);
+    res.status(500).json({ error: 'Failed to fetch chat minutes over time' });
   }
 });
 

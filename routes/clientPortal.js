@@ -77,13 +77,41 @@ router.get('/dashboard', clientAuth, async (req, res) => {
 // GET /api/client/logs
 router.get('/logs', clientAuth, async (req, res) => {
   const clientId = req.user.client_id;
-  const { channel_type, date_from, date_to, avatar, page = 1, limit = 25 } = req.query;
+  const { channel_type, date_from, date_to, avatar, application_sid, page = 1, limit = 25 } = req.query;
   const query = { client_id: clientId };
+  
   if (channel_type) query.channel_type = channel_type;
   if (avatar) query.avatar_id = avatar;
+  
+  // Handle application_sid filtering - support both single value and array
+  if (application_sid && application_sid !== '') {
+    console.log('Client Portal - Processing application_sid:', application_sid);
+    console.log('Client Portal - application_sid type:', typeof application_sid);
+    console.log('Client Portal - application_sid isArray:', Array.isArray(application_sid));
+    
+    if (Array.isArray(application_sid)) {
+      // If it's already an array, use $in operator
+      query.application_sid = { $in: application_sid };
+      console.log('Client Portal - Using $in operator with array:', application_sid);
+    } else if (application_sid.includes(',')) {
+      // If it's a comma-separated string, split it
+      const appSids = application_sid.split(',').map(sid => sid.trim());
+      query.application_sid = { $in: appSids };
+      console.log('Client Portal - Using $in operator with split string:', appSids);
+    } else {
+      // Single value
+      query.application_sid = application_sid;
+      console.log('Client Portal - Using single value:', application_sid);
+    }
+  } else {
+    console.log('Client Portal - No application_sid provided in query');
+  }
+  
   if (date_from || date_to) query.started_at = {};
   if (date_from) query.started_at.$gte = new Date(date_from);
   if (date_to) query.started_at.$lte = new Date(date_to);
+
+  console.log('Client Portal - Final query:', JSON.stringify(query, null, 2));
 
   const logs = await ConversationLog.find(query)
     .populate('avatar_id')
@@ -91,6 +119,9 @@ router.get('/logs', clientAuth, async (req, res) => {
     .limit(Number(limit))
     .sort({ started_at: -1 });
   const total = await ConversationLog.countDocuments(query);
+  
+  console.log(`Client Portal - Found ${logs.length} logs out of ${total} total`);
+  
   res.json({ logs, total, page: Number(page), totalPages: Math.ceil(total / limit) });
 });
 
@@ -99,6 +130,90 @@ router.get('/logs/:id', clientAuth, async (req, res) => {
   const log = await ConversationLog.findOne({ _id: req.params.id, client_id: req.user.client_id }).populate('avatar_id');
   if (!log) return res.status(404).json({ message: 'Log not found' });
   res.json(log);
+});
+
+// GET /api/client/reports - Reports route for client portal
+router.get('/reports', clientAuth, async (req, res) => {
+  const clientId = req.user.client_id;
+  const { channel_type, date_from, date_to, avatar, application_sid, page = 1, limit = 25 } = req.query;
+  
+  // Create a complex query that handles mixed filtering:
+  // - Chat conversations: filter by client_id
+  // - Voice conversations: filter by application_sid
+  const query = {
+    $or: [
+      // Chat conversations filtered by client_id
+      {
+        channel_type: 'chat',
+        client_id: clientId
+      },
+      // Voice conversations filtered by application_sid
+      {
+        channel_type: 'voice'
+      }
+    ]
+  };
+  
+  // Add application_sid filtering for voice conversations
+  if (application_sid && application_sid !== '') {
+    console.log('Client Portal Reports - Processing application_sid:', application_sid);
+    console.log('Client Portal Reports - application_sid type:', typeof application_sid);
+    console.log('Client Portal Reports - application_sid isArray:', Array.isArray(application_sid));
+    
+    let appSids = [];
+    if (Array.isArray(application_sid)) {
+      appSids = application_sid;
+    } else if (application_sid.includes(',')) {
+      appSids = application_sid.split(',').map(sid => sid.trim());
+    } else {
+      appSids = [application_sid];
+    }
+    
+    // Update the voice part of the $or query to include application_sid
+    query.$or[1].application_sid = { $in: appSids };
+    console.log('Client Portal Reports - Using $in operator with:', appSids);
+  } else {
+    console.log('Client Portal Reports - No application_sid provided in query');
+  }
+  
+  // Add other filters
+  if (channel_type) {
+    // If specific channel_type is requested, override the $or logic
+    query.$or = undefined;
+    query.channel_type = channel_type;
+    if (channel_type === 'chat') {
+      query.client_id = clientId;
+    } else if (channel_type === 'voice' && application_sid && application_sid !== '') {
+      let appSids = [];
+      if (Array.isArray(application_sid)) {
+        appSids = application_sid;
+      } else if (application_sid.includes(',')) {
+        appSids = application_sid.split(',').map(sid => sid.trim());
+      } else {
+        appSids = [application_sid];
+      }
+      query.application_sid = { $in: appSids };
+    }
+  }
+  
+  if (avatar) query.avatar_id = avatar;
+  
+  if (date_from || date_to) query.started_at = {};
+  if (date_from) query.started_at.$gte = new Date(date_from);
+  if (date_to) query.started_at.$lte = new Date(date_to);
+
+  console.log('Client Portal Reports - Final query:', JSON.stringify(query, null, 2));
+
+  const logs = await ConversationLog.find(query)
+    .populate('avatar_id')
+    .skip((page - 1) * limit)
+    .limit(Number(limit))
+    .sort({ started_at: -1 });
+  const total = await ConversationLog.countDocuments(query);
+  
+  console.log(`Client Portal Reports - Found ${logs.length} logs out of ${total} total`);
+  
+  res.json({ logs, total, page: Number(page), totalPages: Math.ceil(total / limit) });
 });
 
 module.exports = router; 
