@@ -15,6 +15,11 @@ const BotSchema = new Schema({
   channels: [{ type: String }],
   clientId: { type: Schema.Types.ObjectId, ref: 'Client' },
   description: { type: String },
+  category: {
+    type: String,
+    enum: ['customer_support', 'sales', 'technical', 'general', 'marketing', 'hr', 'finance'],
+    default: 'general'
+  },
   active: { type: Boolean, default: true },
   settings: { type: Schema.Types.Mixed },
   // Chat-specific fields

@@ -1,9 +1,11 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const Bot = require('../models/Bot');
+const { auth } = require('../middleware/auth');
 
 // Create a new bot
-router.post('/', async (req, res) => {
+router.post('/', auth(['admin']), async (req, res) => {
   try {
     // Always sanitize dnis for non-voice/sms bots
     if (!['voice', 'sms'].includes(req.body.type)) {
@@ -51,13 +53,14 @@ router.post('/', async (req, res) => {
 });
 
 // Get all bots with filters and pagination
-router.get('/', async (req, res) => {
+router.get('/', auth(['admin']), async (req, res) => {
   try {
-    const { clientId, type, active, page = 1, limit = 10 } = req.query;
+    const { clientId, type, active, category, page = 1, limit = 10 } = req.query;
     const filter = {};
     if (clientId && clientId !== '') filter.clientId = clientId;
     if (type && type !== '') filter.type = type;
     if (active !== undefined && active !== '') filter.active = active === 'true';
+    if (category && category !== '') filter.category = category;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const bots = await Bot.find(filter)
@@ -92,11 +95,17 @@ router.get('/lookup/:dnis', async (req, res) => {
 });
 
 // Get all bots for a specific client
-router.get('/client/:clientId', async (req, res) => {
+router.get('/client/:clientId', auth(['client_admin', 'client_manager', 'client_viewer', 'admin']), async (req, res) => {
   try {
-    const bots = await Bot.find({ clientId: req.params.clientId });
+    const clientId = req.params.clientId;
+    console.log('🔍 Fetching bots for client:', clientId);
+    
+    // Convert string to ObjectId
+    const bots = await Bot.find({ clientId: new mongoose.Types.ObjectId(clientId) });
+    console.log('✅ Found bots:', bots.length);
     res.json(bots);
   } catch (err) {
+    console.error('❌ Error fetching client bots:', err);
     res.status(500).json({ error: err.message });
   }
 });

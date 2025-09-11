@@ -21,7 +21,9 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.3",
     "ngrok": "^5.0.0-beta.2",
+    "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.5",
+    "openai": "^5.19.1",
     "pino": "^9.7.0",
     "router": "^2.2.0",
     "ws": "^8.18.3"

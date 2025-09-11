@@ -22,10 +22,12 @@ router.get('/conversations-over-time', auth(['admin', 'internal_admin', 'super_a
     const { days = 30, client, channel } = req.query;
     const daysNum = parseInt(days);
     
-    // Calculate date range
+    // Calculate date range with precise boundaries
     const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999); // End of today
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysNum);
+    startDate.setHours(0, 0, 0, 0); // Start of the day
     
     const match = {
       started_at: { $gte: startDate, $lte: endDate }
@@ -43,6 +45,8 @@ router.get('/conversations-over-time', auth(['admin', 'internal_admin', 'super_a
   ]);
     
     console.log(`Conversations over time for ${days} days:`, data);
+    console.log(`Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+    console.log(`Days requested: ${daysNum}, Start date: ${startDate.toDateString()}, End date: ${endDate.toDateString()}`);
   res.json(data);
   } catch (error) {
     console.error('Error fetching conversations over time:', error);
@@ -56,10 +60,12 @@ router.get('/voice-minutes-over-time', auth(['admin', 'internal_admin', 'super_a
     const { days = 30, client } = req.query;
     const daysNum = parseInt(days);
     
-    // Calculate date range
+    // Calculate date range with precise boundaries
     const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999); // End of today
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysNum);
+    startDate.setHours(0, 0, 0, 0); // Start of the day
     
     const match = {
       channel_type: 'voice',
@@ -69,6 +75,10 @@ router.get('/voice-minutes-over-time', auth(['admin', 'internal_admin', 'super_a
       ]
     };
     if (client) match.client_id = client;
+    
+    console.log('🔍 MongoDB match query:', JSON.stringify(match, null, 2));
+    console.log('🔍 Start date:', startDate.toISOString());
+    console.log('🔍 End date:', endDate.toISOString());
     
     const data = await ConversationLog.aggregate([
       { $match: match },
@@ -128,6 +138,15 @@ router.get('/voice-minutes-over-time', auth(['admin', 'internal_admin', 'super_a
           }
         }
       }},
+      // Filter out documents where dateField is outside our range
+      { $match: { 
+        $expr: {
+          $and: [
+            { $gte: ['$dateField', startDate] },
+            { $lte: ['$dateField', endDate] }
+          ]
+        }
+      }},
       { $group: {
         _id: { $dateToString: { format: '%Y-%m-%d', date: '$dateField' } },
         minutes: { $sum: '$durationNumeric' }
@@ -136,6 +155,8 @@ router.get('/voice-minutes-over-time', auth(['admin', 'internal_admin', 'super_a
     ]);
     
     console.log(`Voice minutes over time for ${days} days:`, data);
+    console.log(`Date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+    console.log(`Days requested: ${daysNum}, Start date: ${startDate.toDateString()}, End date: ${endDate.toDateString()}`);
     
     // Debug: Show raw data for Aug 24 and Aug 25
     const aug24Data = await ConversationLog.find({

@@ -249,14 +249,10 @@ router.get('/api/conversations', async (req, res) => {
     const { clientId, channel_type, application_sid, page = 1, limit = 1000 } = req.query;
     const filter = {};
     
-    // Handle clientId filtering - if provided, use it, but don't exclude null client_id
+    // Handle clientId filtering - if provided, use it
     if (clientId && clientId !== '') {
-      // Use $or to match either the specific client_id OR null client_id
-      filter.$or = [
-        { client_id: clientId },
-        { client_id: null }
-      ];
-      console.log('Added clientId filter with $or:', clientId);
+      filter.client_id = clientId;
+      console.log('Added clientId filter:', clientId);
     }
     
     if (channel_type && channel_type !== '') {

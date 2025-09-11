@@ -23,6 +23,12 @@ router.get('/', auth(['admin', 'internal_admin', 'super_admin']), async (req, re
     if (status) query.status = status;
     if (role) query.role = role;
     
+    // Filter by client if provided
+    if (req.query.client) {
+      query.client_id = req.query.client;
+      console.log('Filtering users by client_id:', req.query.client);
+    }
+    
     const users = await User.find(query)
       .populate('client_id', 'name')
       .skip(skip)

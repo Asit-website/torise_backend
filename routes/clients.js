@@ -1,5 +1,6 @@
 const express = require('express');
 const Client = require('../models/Client');
+const ConversationLog = require('../models/ConversationLog');
 const { auth } = require('../middleware/auth');
 const router = express.Router();
 
@@ -258,6 +259,108 @@ router.post('/update-application-sids', auth(['admin', 'internal_admin', 'super_
   } catch (error) {
     console.error('Error updating client application_sid:', error);
     res.status(500).json({ message: 'Error updating client application_sid' });
+  }
+});
+
+// GET /api/clients/:id/conversations - Get conversations for a specific client (admin view)
+router.get('/:id/conversations', auth(['admin', 'internal_admin', 'super_admin']), async (req, res) => {
+  try {
+    const clientId = req.params.id;
+    const { channel_type, date_from, date_to, avatar, application_sid, page = 1, limit = 25 } = req.query;
+    
+    // Get the client to access their application_sid
+    const client = await Client.findById(clientId);
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+    
+    // Use the same logic as client portal reports
+    // Create a complex query that handles mixed filtering:
+    // - Chat conversations: filter by client_id
+    // - Voice conversations: filter by application_sid
+    const query = {
+      $or: [
+        // Chat conversations filtered by client_id
+        {
+          channel_type: 'chat',
+          client_id: clientId
+        },
+        // Voice conversations filtered by application_sid
+        {
+          channel_type: 'voice'
+        }
+      ]
+    };
+    
+    // Add application_sid filtering for voice conversations
+    if (application_sid && application_sid !== '') {
+      console.log('Admin Client Conversations - Processing application_sid:', application_sid);
+      
+      let appSids = [];
+      if (Array.isArray(application_sid)) {
+        appSids = application_sid;
+      } else if (application_sid.includes(',')) {
+        appSids = application_sid.split(',').map(sid => sid.trim());
+      } else {
+        appSids = [application_sid];
+      }
+      
+      // Update the voice part of the $or query to include application_sid
+      query.$or[1].application_sid = { $in: appSids };
+      console.log('Admin Client Conversations - Using $in operator with:', appSids);
+    } else {
+      // If no specific application_sid provided, use the client's application_sid
+      if (client.application_sid && client.application_sid.length > 0) {
+        query.$or[1].application_sid = { $in: client.application_sid };
+        console.log('Admin Client Conversations - Using client application_sid:', client.application_sid);
+      }
+    }
+    
+    // Add other filters
+    if (channel_type) {
+      // If specific channel_type is requested, override the $or logic
+      query.$or = undefined;
+      query.channel_type = channel_type;
+      if (channel_type === 'chat') {
+        query.client_id = clientId;
+      } else if (channel_type === 'voice') {
+        if (application_sid && application_sid !== '') {
+          let appSids = [];
+          if (Array.isArray(application_sid)) {
+            appSids = application_sid;
+          } else if (application_sid.includes(',')) {
+            appSids = application_sid.split(',').map(sid => sid.trim());
+          } else {
+            appSids = [application_sid];
+          }
+          query.application_sid = { $in: appSids };
+        } else if (client.application_sid && client.application_sid.length > 0) {
+          query.application_sid = { $in: client.application_sid };
+        }
+      }
+    }
+    
+    if (avatar) query.avatar_id = avatar;
+    
+    if (date_from || date_to) query.started_at = {};
+    if (date_from) query.started_at.$gte = new Date(date_from);
+    if (date_to) query.started_at.$lte = new Date(date_to);
+
+    console.log('Admin Client Conversations - Final query:', JSON.stringify(query, null, 2));
+
+    const logs = await ConversationLog.find(query)
+      .populate('avatar_id')
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .sort({ started_at: -1 });
+    const total = await ConversationLog.countDocuments(query);
+    
+    console.log(`Admin Client Conversations - Found ${logs.length} logs out of ${total} total`);
+    
+    res.json({ logs, total, page: Number(page), totalPages: Math.ceil(total / limit) });
+  } catch (error) {
+    console.error('Error fetching client conversations:', error);
+    res.status(500).json({ message: 'Failed to fetch conversations' });
   }
 });
 

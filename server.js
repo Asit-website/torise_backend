@@ -31,6 +31,7 @@ const analyticsRoutes = require('./routes/analytics');
 const clientApplicationRoutes = require('./routes/clientApplications');
 const clientPortalRoutes = require('./routes/clientPortal');
 const botRoutes = require('./routes/bots');
+const sentimentRoutes = require('./routes/sentiment');
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -42,6 +43,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/client-applications', clientApplicationRoutes);
 app.use('/api/client', clientPortalRoutes);
 app.use('/api/admin/bots', botRoutes);
+app.use('/api/sentiment', sentimentRoutes);
 
 // Health check route
 app.get('/api/health', (req, res) => {
