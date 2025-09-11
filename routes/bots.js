@@ -5,7 +5,7 @@ const Bot = require('../models/Bot');
 const { auth } = require('../middleware/auth');
 
 // Create a new bot
-router.post('/', auth(['admin']), async (req, res) => {
+router.post('/', auth(['admin','super_admin']), async (req, res) => {
   try {
     // Always sanitize dnis for non-voice/sms bots
     if (!['voice', 'sms'].includes(req.body.type)) {
@@ -53,7 +53,7 @@ router.post('/', auth(['admin']), async (req, res) => {
 });
 
 // Get all bots with filters and pagination
-router.get('/', auth(['admin']), async (req, res) => {
+router.get('/', auth(['admin','super_admin']), async (req, res) => {
   try {
     const { clientId, type, active, category, page = 1, limit = 10 } = req.query;
     const filter = {};
@@ -95,7 +95,7 @@ router.get('/lookup/:dnis', async (req, res) => {
 });
 
 // Get all bots for a specific client
-router.get('/client/:clientId', auth(['client_admin', 'client_manager', 'client_viewer', 'admin']), async (req, res) => {
+router.get('/client/:clientId', auth(['client_admin', 'client_manager', 'client_viewer', 'admin','super_admin']), async (req, res) => {
   try {
     const clientId = req.params.clientId;
     console.log('🔍 Fetching bots for client:', clientId);
