@@ -72,6 +72,8 @@ router.post('/', auth(['admin', 'internal_admin', 'super_admin']), async (req, r
       default_language
     } = req.body;
     
+    console.log('Creating client with application_sid:', application_sid, 'Type:', typeof application_sid);
+    
     // Check if client already exists with this contact_email
     if (contact_email) {
       const existingClient = await Client.findOne({ contact_email });
@@ -87,7 +89,8 @@ router.post('/', auth(['admin', 'internal_admin', 'super_admin']), async (req, r
       country,
       industry,
       status,
-      application_sid: application_sid && typeof application_sid === 'string' ? application_sid.split(',').map(sid => sid.trim()) : [],
+      application_sid: application_sid && typeof application_sid === 'string' ? application_sid.split(',').map(sid => sid.trim()).filter(Boolean) : 
+                       Array.isArray(application_sid) ? application_sid.filter(Boolean) : [],
       supports_text: supports_text || false,
       supports_voice: supports_voice || false,
       notes,
@@ -96,6 +99,8 @@ router.post('/', auth(['admin', 'internal_admin', 'super_admin']), async (req, r
     });
     
     await client.save();
+    
+    console.log('Client created successfully with application_sid:', client.application_sid);
     
     res.status(201).json({
       message: 'Client created successfully',
@@ -145,9 +150,9 @@ router.put('/:id', auth(['admin', 'internal_admin', 'super_admin']), async (req,
     if (industry !== undefined) client.industry = industry;
     if (status) client.status = status;
     if (application_sid && typeof application_sid === 'string') {
-      client.application_sid = application_sid.split(',').map(sid => sid.trim());
+      client.application_sid = application_sid.split(',').map(sid => sid.trim()).filter(Boolean);
     } else if (application_sid && Array.isArray(application_sid)) {
-      client.application_sid = application_sid;
+      client.application_sid = application_sid.filter(Boolean);
     }
     if (supports_text !== undefined) client.supports_text = supports_text;
     if (supports_voice !== undefined) client.supports_voice = supports_voice;
